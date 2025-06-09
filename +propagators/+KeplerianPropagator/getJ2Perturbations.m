@@ -1,9 +1,4 @@
-function J2perturbations = getJ2Perturbations(t, state, const, body)
-    % Constants
-    mu = const.(body).mu; % Body gravitational parameter [m^3/s^2]
-    R = const.(body).R;   % Body radius [m]
-    J2 = const.(body).J2; % Body J2 constant [-]
-    
+function J2perturbations = getJ2Perturbations(t, state, mu, R, J2)  
     % Extract state variables
     a = state(1); % semi-major axis [m]
     e = state(2); % eccentricity [-]

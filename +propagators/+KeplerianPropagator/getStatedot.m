@@ -1,7 +1,4 @@
-function statedot = getStatedot(t, state, const, body, perturbated)
-    % Constant
-    mu = const.(body).mu;
-
+function statedot = getStatedot(t, state, mu, R, J2, perturbated)
     % Extract state variables
     a = state(1); % semi-major axis [m]
     e = state(2); % eccentricity [-]
@@ -18,8 +15,8 @@ function statedot = getStatedot(t, state, const, body, perturbated)
     eta = sqrt(1-e^2);
     
     % Get perturbations
-    if nargin < 5 || perturbated
-        perturbations = propagators.KeplerianPropagator.getPerturbations(t, state, const, body);
+    if perturbated
+        perturbations = propagators.KeplerianPropagator.getPerturbations(t, state, mu, R, J2);
     else
         perturbations = zeros(3, 1);
     end
