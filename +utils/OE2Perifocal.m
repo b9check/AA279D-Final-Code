@@ -1,12 +1,8 @@
-function state_perifocal = OE2Perifocal(state_OE,const, body)
-    % Constant
-    mu = const.(body).mu;
-
+function state_perifocal = OE2Perifocal(state_OE, mu)
     % Extract state variables
     a = state_OE(1); % semi-major axis [m]
     e = state_OE(2); % eccentricity [-]
     f = state_OE(6); % true anomaly [rad]
-    
     
     % Compute the distance
     r = a * (1 - e^2) / (1 + e * cos(f));

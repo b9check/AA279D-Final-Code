@@ -1,4 +1,4 @@
-function state_ECI = OE2ECI(state_OE,const, body)
+function state_ECI = OE2ECI(state_OE, mu)
     
     % Extract state variables
     i = state_OE(3); % inclination [rad]
@@ -6,7 +6,7 @@ function state_ECI = OE2ECI(state_OE,const, body)
     w = state_OE(5); % argument of perigee [rad]
 
     % Get perifocal state
-    state_perifocal = utils.OE2Perifocal(state_OE,const, body);
+    state_perifocal = utils.OE2Perifocal(state_OE, mu);
 
     % Rotation matrices
     R3_W = [ cos(W), -sin(W), 0;

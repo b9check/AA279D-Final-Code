@@ -1,7 +1,4 @@
-function state_OE = ECI2OE(state_ECI, const, body)
-    % Gravitational parameter
-    mu = const.(body).mu;
-    
+function state_OE = ECI2OE(state_ECI, mu)    
     % Extrtact position and velocity
     r_ECI = state_ECI(1:3);
     v_ECI = state_ECI(4:6);
