@@ -1,7 +1,4 @@
-function statedot = getStatedot(t, state, const, body, perturbated)
-    % Constant
-    mu = const.(body).mu;
-    
+function statedot = getStatedot(t, state, mu, R, J2, perturbated)
     % Extract state variables
     x = state(1);
     y = state(2);
@@ -23,7 +20,7 @@ function statedot = getStatedot(t, state, const, body, perturbated)
 
     % Perturbations
     if nargin < 5 || perturbated
-        perturbations = propagators.FodePropagator.getPerturbations(t, state, const, body);
+        perturbations = propagators.FodePropagator.getPerturbations(t, state, mu, R, J2);
     else
         perturbations = zeros(3, 1);
     end    
