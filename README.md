@@ -1,7 +1,7 @@
 # DRAGON-DOCK: AA279D Control of Distributed Space Systems
 
 ## Overview
-DRAGON-DOCK is a project for Stanford's AA279D course on Spacecraft Formation-Flying and Rendezvous. It develops a framework for spacecraft rendezvous and docking in low Earth orbit, integrating navigation (using an Unscented Kalman Filter) and impulsive control laws for a chief-deputy spacecraft pair. The project includes MATLAB simulations and a comprehensive final report.
+DRAGON-DOCK is a project for Stanford's AA279D course on Spacecraft Formation-Flying and Rendezvous. It develops a framework for spacecraft rendezvous and docking in low Earth orbit, integrating navigation (using an Unscented Kalman Filter) and continuous control laws for a chief-deputy spacecraft pair. The project includes MATLAB simulations and a comprehensive final report.
 
 ## Repository Structure
 - **control_helpers/**: Helper functions for control algorithms.
