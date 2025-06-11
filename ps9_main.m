@@ -4,9 +4,10 @@ clc; clear; close all;
 
 %% Initialization 
 
-% Orbited body
-body = 'earth';
-const = utils.getConstants({body});
+% Constants
+mu = 3.986004418e14;  
+R = 6378137;          
+J2 = 1.08262668e-3; 
 
 % Chief initial orbital elements
 a_0 = 6771000 ;         % semi-major axis [m]
@@ -18,7 +19,7 @@ f_0 = deg2rad(30);      % true anomaly [rad]
 
 % Chief initial state in OE & ECI
 initial_state_0_OE = [a_0, e_0, i_0, W_0, w_0, f_0];
-initial_state_0_ECI = utils.OE2ECI(initial_state_0_OE, const, body);
+initial_state_0_ECI = utils.OE2ECI(initial_state_0_OE, mu);
 r0_init = initial_state_0_ECI(1:3);
 v0_init = initial_state_0_ECI(4:6);
 
@@ -45,8 +46,8 @@ delta_i_y = deg2rad(0.7850);
 initial_state_1_rQNS_OE = [delta_a; delta_lambda; delta_e_x; delta_e_y; delta_i_x; delta_i_y];
 
 % Deputy initial state in OE & ECI
-initial_state_1_OE = rQNSOE2OE(initial_state_0_OE,initial_state_1_rQNS_OE);
-initial_state_1_ECI = utils.OE2ECI(initial_state_1_OE, const, body);
+initial_state_1_OE = utils.rQNSOE2OE(initial_state_0_OE,initial_state_1_rQNS_OE);
+initial_state_1_ECI = utils.OE2ECI(initial_state_1_OE, mu);
 r1_init = initial_state_1_ECI(1:3);
 v1_init = initial_state_1_ECI(4:6);
 
@@ -67,7 +68,6 @@ N_param = 14; % Thrust concentration exponent
 %% - Generate Ground Truth State
 
 % Orbital period
-mu = const.(body).mu;
 T = 2 * pi * sqrt(a_0^3 / mu); % Orbital period [s]
 
 % Simulation parameters
@@ -78,7 +78,7 @@ options = odeset('RelTol', 1e-12, 'AbsTol', 1e-12);
 
 % Run the perturbed FODE propagator for chief in ECI
 perturbated = true;
-odefun = @(t, state) propagators.FodePropagator.getStatedot(t, state, const, body, perturbated);
+odefun = @(t, state) propagators.FodePropagator.getStatedot(t, state, mu, R, J2, perturbated);
 [t, state_ECI_0_p] = ode113(odefun, (tstart:tint:tend)', initial_state_0_ECI, options);
 
 % Convert chief ECI to orbital elements and precompute A_c, B_c
@@ -88,10 +88,10 @@ A_all = zeros(6, 6, N);
 B_all = zeros(6, 3, N);
 for idx = 1:N
     state_ECI = state_ECI_0_p(idx, :)';
-    chief_OE_traj(idx, :) = utils.ECI2OE(state_ECI, const, body);
-    Phi_J2_qns = getQNS_J2_STM(chief_OE_traj(idx, :), tau_diff, const, body);
+    chief_OE_traj(idx, :) = utils.ECI2OE(state_ECI, mu);
+    Phi_J2_qns = control_helpers.getQNS_J2_STM(chief_OE_traj(idx, :), tau_diff, mu, J2, R);
     A_all(:, :, idx) = (Phi_J2_qns - eye(6)) / tau_diff;
-    B_all(:, :, idx) = getBcMatrix(chief_OE_traj(idx, :), const, body);
+    B_all(:, :, idx) = control_helpers.getBcMatrix(chief_OE_traj(idx, :), mu, J2, R);
 end
 
 % Propagate deputy QNS ROE with Lyapunov control after nb_orbit
@@ -109,7 +109,7 @@ for idx = 1:N-1
     err = delta_alpha - desired_QNSROE;
     V_traj(idx) = 0.5 * (err' * err);
     if idx >= k_control_start
-        P = getPMatrix(OE_curr, delta_alpha, desired_QNSROE, k, N_param);
+        P = control_helpers.getPMatrix(OE_curr, delta_alpha, desired_QNSROE, k, N_param);
         u_d = -pinv(B_c) * (A_c * delta_alpha + P * err);
     else
         u_d = zeros(3,1); % No control until nb_orbit
@@ -122,7 +122,7 @@ end
 % Compute final V and u
 V_traj(N) = 0.5 * (delta_alpha - desired_QNSROE)' * (delta_alpha - desired_QNSROE);
 if N >= k_control_start
-    P = getPMatrix(chief_OE_traj(N, :), delta_alpha, desired_QNSROE, k, N_param);
+    P = control_helpers.getPMatrix(chief_OE_traj(N, :), delta_alpha, desired_QNSROE, k, N_param);
     u_traj(:, N) = -pinv(B_all(:, :, N)) * (A_all(:, :, N) * delta_alpha + P * (delta_alpha - desired_QNSROE));
 else
     u_traj(:, N) = zeros(3,1);
@@ -184,8 +184,8 @@ for idx = 1:N
     chief_ECI = state_ECI_0_p(idx, :)';
     OE_c = chief_OE_traj(idx, :);
     delta_rQNS = delta_alpha_traj(idx, :)';
-    deputy_OE = rQNSOE2OE(OE_c, delta_rQNS);
-    deputy_ECI = utils.OE2ECI(deputy_OE, const, body);
+    deputy_OE = utils.rQNSOE2OE(OE_c, delta_rQNS);
+    deputy_ECI = utils.OE2ECI(deputy_OE, mu);
     r_rel_traj(idx) = norm(deputy_ECI(1:3) - chief_ECI(1:3));
 end
 figure('Name', 'Ground Truth Relative Distance', 'Position', [100, 100, 600, 400]);
@@ -204,7 +204,7 @@ sqrt_R_k = sqrtm(R_k);
 
 for k = 1:N
     x_k_gt = x_gt(k,:)';
-    z_k_true = h_k(x_k_gt, zeros(9,1), const, body);
+    z_k_true = h_k(x_k_gt, zeros(9,1), mu);
     v_k = sqrt_R_k * randn(9,1);
     z_k(k,:) = z_k_true + v_k;
 end
@@ -287,11 +287,11 @@ for k = 1:N
     chi_pred = zeros(n, 2*n+1);
     for i = 1:(2*n+1)
         if k >= k_control_start
-            u_k1 = get_control_Lyapunov(chi(:,i), desired_QNSROE, k, N_param, tau_diff, const, body);
+            u_k1 = get_control_Lyapunov(chi(:,i), desired_QNSROE, k, N_param, tau_diff, mu, J2, R);
         else
             u_k1 = zeros(6,1);
         end
-        chi_pred(:,i) = f_k(chi(:,i), u_k1, zeros(n,1), delta_t, const, body);
+        chi_pred(:,i) = f_k(chi(:,i), u_k1, zeros(n,1), delta_t, mu, J2, R);
     end
     x_hat_pred = zeros(n,1);
     for i = 1:(2*n+1)
@@ -306,7 +306,7 @@ for k = 1:N
     % Compute control and Lyapunov function
     V_k = 0.5 * (x_hat_pred(7:12) - desired_QNSROE)' * (x_hat_pred(7:12) - desired_QNSROE);
     if k >= k_control_start
-        u_k = get_control_Lyapunov(x_hat_pred, desired_QNSROE, k, N_param, tau_diff, const, body);
+        u_k = get_control_Lyapunov(x_hat_pred, desired_QNSROE, k, N_param, tau_diff, mu, J2, R);
     else
         u_k = zeros(6,1);
     end
@@ -329,7 +329,7 @@ for k = 1:N
     end
     Z_pred = zeros(m, 2*n+1);
     for i = 1:(2*n+1)
-        Z_pred(:,i) = h_k(chi_pred_new(:,i), zeros(m,1), const, body);
+        Z_pred(:,i) = h_k(chi_pred_new(:,i), zeros(m,1), mu);
     end
     z_hat = zeros(m,1);
     for i = 1:(2*n+1)
@@ -353,7 +353,7 @@ for k = 1:N
     % Store results
     x_hat_store(k,:) = x_hat';
     P_store(:,:,k) = P;
-    z_post_store(k,:) = h_k(x_hat, zeros(m,1), const, body)';
+    z_post_store(k,:) = h_k(x_hat, zeros(m,1), mu)';
 end
 
 
@@ -656,14 +656,9 @@ fprintf('  \Delta V_r: %.4e m/s\n', max_control_error(1));
 fprintf('  \Delta V_t: %.4e m/s\n', max_control_error(2));
 fprintf('  \Delta V_n: %.4e m/s\n', max_control_error(3));
 
+
 %% - Functions
-
-function x_k = f_k(x_k1, u_k, w_k, delta_t, const, body)
-    % Constants
-    mu = const.(body).mu;
-    J2 = const.(body).J2;
-    R = const.(body).R;
-
+function x_k = f_k(x_k1, u_k, w_k, delta_t, mu, J2, R)
     % Chief dynamics (ECI)
     x_c_k1 = x_k1(1:6);
     u_k_c = u_k(1:3);
@@ -694,22 +689,22 @@ function x_k = f_k(x_k1, u_k, w_k, delta_t, const, body)
     x_d_k1 = x_k1(7:12);
     u_k_d = u_k(4:6);
     w_k_d = w_k(7:12);
-    chief_OE_k1 = utils.ECI2OE(x_k1(1:6), const, body);
-    Phi_J2_qns_k1 = getQNS_J2_STM(chief_OE_k1, delta_t, const, body);
-    B_k1 = getBcMatrix(chief_OE_k1, const, body);    
+    chief_OE_k1 = utils.ECI2OE(x_k1(1:6), mu);
+    Phi_J2_qns_k1 = control_helpers.getQNS_J2_STM(chief_OE_k1, delta_t, mu, J2, R);
+    B_k1 = control_helpers.getBcMatrix(chief_OE_k1, mu, J2, R);    
     f_k_d = Phi_J2_qns_k1*x_d_k1 + delta_t*B_k1*u_k_d + w_k_d;
     x_k = [f_k_c; f_k_d];
 end
 
 
-function z_k = h_k(x_k, v_k, const, body)
+function z_k = h_k(x_k, v_k, mu)
     x_c_k = x_k(1:6);
     r_c_k = x_k(1:3);
     v_c_k = x_k(4:6);
     rQNSOE_d_k = x_k(7:12);
-    OE_c_k = utils.ECI2OE(x_c_k,const,body);
-    OE_d_k = rQNSOE2OE(OE_c_k,rQNSOE_d_k);
-    x_d_k = utils.OE2ECI(OE_d_k,const,body);
+    OE_c_k = utils.ECI2OE(x_c_k,mu);
+    OE_d_k = utils.rQNSOE2OE(OE_c_k,rQNSOE_d_k);
+    x_d_k = utils.OE2ECI(OE_d_k,mu);
     r_d_k = x_d_k(1:3);
     % v_d_k = x_d_k(4:6);
     delta_r = r_d_k - r_c_k;
@@ -724,132 +719,7 @@ function z_k = h_k(x_k, v_k, const, body)
 end
 
 
-%%
-
-function Phi_J2_qns = getQNS_J2_STM(OE, tau, const, body)
-    % Extract orbital elements
-    a = OE(1); e = OE(2); i = OE(3);
-    W = OE(4); w = OE(5);
-
-    % Constants
-    mu = const.(body).mu;
-    J2 = const.(body).J2;
-    R = const.(body).R;
-
-    % Derived quantities
-    eta = sqrt(1 - e^2);
-    kappa = (3/4) * J2 * R^2 * sqrt(mu) / (a^(7/2) * eta^4);
-
-    % Auxiliary terms
-    E = 1 + eta;
-    F = 4 + 3 * eta;
-    G = 1 / eta^2;
-    P = 3 * cos(i)^2 - 1;
-    Q = 5 * cos(i)^2 - 1;
-    R = cos(i);
-    S = sin(2*i);
-    T = sin(i)^2;
-
-    % Perifocal eccentricity vector components
-    exi = e * cos(w);
-    eyi = e * sin(w);
-
-    % Secular rates
-    w_dot = kappa * Q;
-    
-    % Final perigee argument
-    omega_f = w + w_dot * tau;
-    exf = e * cos(omega_f);
-    eyf = e * sin(omega_f);
-
-    % Trig terms
-    cos_wt = cos(w_dot * tau);
-    sin_wt = sin(w_dot * tau);
-
-    % Construct STM
-    Phi_J2_qns = zeros(6,6);
-    Phi_J2_qns(1,1) = 1;
-    Phi_J2_qns(2,1) = -((3/2)*sqrt(mu/a^3) + (7/2)*kappa*E*P) * tau;
-    Phi_J2_qns(2,2) = 1;
-    Phi_J2_qns(2,3) = kappa * exi * F * G * P * tau;
-    Phi_J2_qns(2,4) = kappa * eyi * F * G * P * tau;
-    Phi_J2_qns(2,5) = -kappa * F * S * tau;
-
-    Phi_J2_qns(3,1) = (7/2) * kappa * eyf * Q * tau;
-    Phi_J2_qns(3,3) = cos_wt - 4 * kappa * exi * eyf * G * Q * tau;
-    Phi_J2_qns(3,4) = -sin_wt - 4 * kappa * eyi * eyf * G * Q * tau;
-    Phi_J2_qns(3,5) = 5 * kappa * eyf * S * tau;
-
-    Phi_J2_qns(4,1) = -(7/2) * kappa * exf * Q * tau;
-    Phi_J2_qns(4,3) = sin_wt + 4 * kappa * exi * exf * G * Q * tau;
-    Phi_J2_qns(4,4) = cos_wt + 4 * kappa * eyi * exf * G * Q * tau;
-    Phi_J2_qns(4,5) = -5 * kappa * exf * S * tau;
-
-    Phi_J2_qns(5,5) = 1;
-    Phi_J2_qns(6,1) = (7/2) * kappa * S * tau;
-    Phi_J2_qns(6,3) = -4 * kappa * exi * G * S * tau;
-    Phi_J2_qns(6,4) = -4 * kappa * eyi * G * S * tau;
-    Phi_J2_qns(6,5) = 2 * kappa * T * tau;
-    Phi_J2_qns(6,6) = 1;
-end
-
-
-function Bc = getBcMatrix(chief_OE, const, body)
-     % Extract orbital elements
-    a = chief_OE(1); e = chief_OE(2); i = chief_OE(3);
-    W = chief_OE(4); w = chief_OE(5); f = chief_OE(6);
-
-    % Constants
-    mu = const.(body).mu;
-    J2 = const.(body).J2;
-    R = const.(body).R;
-
-    % Derived quantities
-    eta = sqrt(1 - e^2);
-    nc = sqrt(mu / a^3);
-    gamma = (3/4) * J2 * R^2 * sqrt(mu);
-    kappa = gamma / (a^(7/2) * eta^4);
-
-    % Trig values
-    sin_wf = sin(w + f);
-    cos_wf = cos(w + f);
-    tan_i = tan(i);
-    cos_f = cos(f);
-    sin_f = sin(f);
-
-    % Eccentricity vector components
-    ex = e * cos(w);
-    ey = e * sin(w);
-
-    % Common factors
-    denom = 1 + e * cos_f;
-    ec2pf = (2 + e * cos_f); % shorthand
-
-    % Compute B matrix
-    Bc = zeros(6,3);
-    Bc(1,1) = 2 * e * sin_f / eta;
-    Bc(1,2) = 2 * (1 + e * cos_f) / eta;
-    Bc(2,1) = -2 * eta^2 / denom;
-
-    Bc(3,1) = eta * sin_wf;
-    Bc(3,2) = eta * (ec2pf * cos_wf + ex) / denom;
-    Bc(3,3) = eta * ey * sin_wf / (tan_i * denom);
-
-    Bc(4,1) = -eta * cos_wf;
-    Bc(4,2) = eta * (ec2pf * sin_wf + ey) / denom;
-    Bc(4,3) = -eta * ex * sin_wf / (tan_i * denom);
-
-    Bc(5,3) = eta * cos_wf / denom;
-
-    Bc(6,3) = eta * sin_wf / denom;
-
-    % Normalize
-    Bc = Bc / (a * nc);
-end
-
-
-
-function u_k = get_control_Lyapunov(x_k, desired_QNSROE, k, N_param, tau_diff, const, body)
+function u_k = get_control_Lyapunov(x_k, desired_QNSROE, k, N_param, tau_diff, mu, J2, R)
     % Compute Lyapunov-based control input for deputy satellite
     % Inputs:
     %   x_k: State vector [r_c; v_c; delta_a; delta_lambda; delta_e_x; delta_e_y; delta_i_x; delta_i_y]
@@ -866,15 +736,15 @@ function u_k = get_control_Lyapunov(x_k, desired_QNSROE, k, N_param, tau_diff, c
     delta_alpha = x_k(7:12);
 
     % Compute chief orbital elements
-    OE_curr = utils.ECI2OE(x_k(1:6), const, body);
+    OE_curr = utils.ECI2OE(x_k(1:6), mu);
 
     % Compute A_c and B_c
-    Phi_J2_qns = getQNS_J2_STM(OE_curr, tau_diff, const, body);
+    Phi_J2_qns = control_helpers.getQNS_J2_STM(OE_curr, tau_diff, mu, J2, R);
     A_c = (Phi_J2_qns - eye(6)) / tau_diff;
-    B_c = getBcMatrix(OE_curr, const, body);
+    B_c = control_helpers.getBcMatrix(OE_curr, mu, J2, R);
 
     % Compute P matrix
-    P = getPMatrix(OE_curr, delta_alpha, desired_QNSROE, k, N_param);
+    P = control_helpers.getPMatrix(OE_curr, delta_alpha, desired_QNSROE, k, N_param);
 
     % Compute tracking error
     err = delta_alpha - desired_QNSROE;
@@ -884,158 +754,4 @@ function u_k = get_control_Lyapunov(x_k, desired_QNSROE, k, N_param, tau_diff, c
 
     % Construct full control input (no control for chief)
     u_k = [zeros(3,1); u_d];
-end
-
-function P_bar = getPMatrix(chief_OE, current_QNSROE, desired_QNSROE, k, N)
-    % Extract chief orbital elements
-    a = chief_OE(1); % Semi-major axis (m)
-    e = chief_OE(2); % Eccentricity (-)
-    i = chief_OE(3); % Inclination (rad)
-    W = chief_OE(4); % RAAN (rad)
-    w = chief_OE(5); % Argument of perigee (rad)
-    f = chief_OE(6); % True anomaly (rad)
-
-    % Compute mean anomaly (M) from true anomaly (f)
-    E = 2 * atan2(sqrt(1 - e) * sin(f/2), sqrt(1 + e) * cos(f/2)); % Eccentric anomaly
-    M = E - e * sin(E); % Mean anomaly
-
-    % Mean argument of latitude
-    phi = w + M;
-
-    % Compute tracking errors
-    delta_rQNSOE = current_QNSROE - desired_QNSROE;
-    delta_rQNSOE_ex = delta_rQNSOE(3);
-    delta_rQNSOE_ey = delta_rQNSOE(4);
-    delta_rQNSOE_ix = delta_rQNSOE(5);
-    delta_rQNSOE_iy = delta_rQNSOE(6);
-
-    % Compute fuel-optimal angles
-    phi_ip = atan2(delta_rQNSOE_ey, delta_rQNSOE_ex); % In-plane optimal angle
-    phi_oop = atan2(delta_rQNSOE_iy, delta_rQNSOE_ix); % Out-of-plane optimal angle
-    phi_lambda = w; % Radial thrust at perigee (approximate)
-
-    % Angular offsets
-    J = phi - phi_ip;
-    H = phi - phi_oop;
-    K = phi - phi_lambda;
-
-    % Ensure N is even and positive
-    if mod(N, 2) ~= 0 || N < 2
-        error('N must be an even positive integer >= 2');
-    end
-
-    % Construct P_bar
-    P_bar = (1/k) * diag([cos(J)^N, cos(K)^N, cos(J)^N, cos(J)^N, cos(H)^N, cos(H)^N]);
-end
-
-
-function deputy_OE = rQNSOE2OE(chief_OE, deputy_rQNSOE)
-    % Unpack chief OEs
-    a_c = chief_OE(1);
-    e_c = chief_OE(2);
-    i_c = chief_OE(3);
-    W_c = chief_OE(4);
-    w_c = chief_OE(5);
-    f_c = chief_OE(6);
-    E_c = 2 * atan( sqrt((1 - e_c)/(1 + e_c)) * tan(f_c/2) );  % Eccentric anomaly
-    M_c = E_c - e_c * sin(E_c);                               % Mean anomaly
-    %lambda_c = W_c + w_c + M_c;
-
-    % Unpack deputy rQNS OEs
-    delta_a = deputy_rQNSOE(1);
-    delta_lambda = deputy_rQNSOE(2);
-    delta_e_x = deputy_rQNSOE(3);
-    delta_e_y = deputy_rQNSOE(4);
-    delta_i_x = deputy_rQNSOE(5);
-    delta_i_y = deputy_rQNSOE(6);
-
-    % Deputy orbital elements
-    a_d = a_c*(delta_a + 1);
-    W_d = delta_i_y*sin(i_c) + W_c;
-    i_d = delta_i_x + i_c;
-    alpha = delta_e_y + e_c*sin(w_c);
-    beta = delta_e_x + e_c*cos(w_c);
-    w_d = atan2(alpha, beta);
-    e_d = sqrt(alpha^2 + beta^2);
-    M_d = delta_lambda - (W_d - W_c)*cos(i_c) + (M_c + w_c) - w_d;
-    E_d = newton_raphson(M_d,e_d);
-    f_d = 2 * atan2(sqrt(1 + e_d)*sin(E_d/2), sqrt(1 - e_d) * cos(E_d / 2));
-    deputy_OE = [a_d, e_d, i_d, W_d, w_d, f_d];
-end
-
-
-function E = newton_raphson(M, e, epsilon)
-    if nargin < 3
-        epsilon = 1e-10;
-    end
-
-    E = M;
-    max_iter = 1e5;
-
-    for i = 1:max_iter
-        f_E = E - e * sin(E) - M;
-        f_prime_E = 1 - e * cos(E);
-        increment = f_E / f_prime_E;
-        E = E - increment;
-
-        if abs(increment) <= epsilon
-            break;
-        end
-    end
-end
-
-
-
-function rQNSOE = OE2rQNSOE(oe_chief, oe_deputy)
-    % Extract chief elements
-    a_0 = oe_chief(1);
-    e_0 = oe_chief(2);
-    i_0 = oe_chief(3);
-    W_0 = oe_chief(4);
-    w_0 = oe_chief(5);
-    f_0 = oe_chief(6);
-
-    % Extract deputy elements
-    a_1 = oe_deputy(1);
-    e_1 = oe_deputy(2);
-    i_1 = oe_deputy(3);
-    W_1 = oe_deputy(4);
-    w_1 = oe_deputy(5);
-    f_1 = oe_deputy(6);
-
-    % True anomaly → Eccentric anomaly
-    E_0 = 2 * atan( sqrt((1 - e_0)/(1 + e_0)) * tan(f_0 / 2) );
-    E_1 = 2 * atan( sqrt((1 - e_1)/(1 + e_1)) * tan(f_1 / 2) );
-
-    % Eccentric anomaly → Mean anomaly
-    M_0 = E_0 - e_0 * sin(E_0);
-    M_1 = E_1 - e_1 * sin(E_1);
-
-    % Compute QNS-ROE
-    delta_a  = (a_1 - a_0) / a_0;
-    delta_lambda = (M_1 + w_1) - (M_0 + w_0) + (W_1 - W_0) * cos(i_0);
-    delta_ex = e_1 * cos(w_1) - e_0 * cos(w_0);
-    delta_ey = e_1 * sin(w_1) - e_0 * sin(w_0);
-    delta_ix = i_1 - i_0;
-    delta_iy = (W_1 - W_0) * sin(i_0);
-
-    rQNSOE = [delta_a, delta_lambda, delta_ex, delta_ey, delta_ix, delta_iy];
-end
-
-function rQNSOE = ECI2rQNSOE(chief_ECI, deputy_ECI, const, body)
-    N = size(chief_ECI, 1);
-    rQNSOE = zeros(N, 6);
-
-    for k = 1:N
-        % Extract ECI states
-        chief_state = chief_ECI(k, :)';
-        deputy_state = deputy_ECI(k, :)';
-
-        % Convert to Keplerian OE
-        oe_chief = utils.ECI2OE(chief_state, const, body);
-        oe_deputy = utils.ECI2OE(deputy_state, const, body);
-
-        % Compute relative QNS
-        rQNSOE(k, :) = OE2rQNSOE(oe_chief, oe_deputy);
-    end
 end

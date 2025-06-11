@@ -1,4 +1,4 @@
-%% ps4_main_regressionMean.m
+%% PS4 CODE V2
 % Propagate osculating J2, compute QNS & rQNS, then overlay best‐fit slopes
 
 close all; clear;
