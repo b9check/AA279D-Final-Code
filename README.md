@@ -32,7 +32,7 @@ For BibTeX users:
 ```bibtex
 @software{Carlhammar_Check_2025_DRAGON_DOCK,
   author = {Alexandre Carlhammar and Brian Check},
-  title = {{DRAGON-DOCK: Code for Spacecraft Rendezvous and Docking in AA279D Distributed Space Systems}},
+  title = {{AA279D - Distributed Space Systems - Spacecraft Rendezvous and Docking}},
   year = {2025},
   publisher = {Stanford University},
   url = {https://github.com/b9check/DRAGON-DOCK-Stanford-AA279D-Control-of-Distributed-Space-Systems},
