@@ -26,7 +26,7 @@ The final report (`DRAGON-DOCK - AA 279D Final Report.pdf`) provides a detailed 
 ## How to Cite
 If you use this code in your work, please cite it as follows:
 
-Carlhammar, A., & Check, B. (2025). DRAGON-DOCK: Code for Spacecraft Rendezvous and Docking in AA279D Distributed Space Systems (Version 1.0) [Computer software]. Stanford University. https://github.com/b9check/DRAGON-DOCK-Stanford-AA279D-Control-of-Distributed-Space-Systems
+Carlhammar, A., & Check, B. (2025). AA279D - Distributed Space Systems - Spacecraft Rendezvous and Docking (Version 1.0) [Computer software]. Stanford University. https://github.com/b9check/DRAGON-DOCK-Stanford-AA279D-Control-of-Distributed-Space-Systems
 
 For BibTeX users:
 ```bibtex
