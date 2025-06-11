@@ -10,7 +10,6 @@ DRAGON-DOCK is a project for Stanford's AA279D course on Spacecraft Formation-Fl
 - **Figures/**: Plots and visualizations generated from simulations.
 - **DRAGON-DOCK - AA 279D Final Report.pdf**: Final project report detailing methodology, results, and analysis.
 - **ps[1-9]_main.m**: Main scripts for Problem Sets 1-9, implementing simulations and analyses.
-- **control_results.mat**: Saved MATLAB results for control simulations.
 
 ## Setup and Usage
 1. **Requirements**: MATLAB (R2020a or later recommended).
