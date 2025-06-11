@@ -326,3 +326,4 @@ xlabel('a \delta i_x [m]'); ylabel('a \delta i_y [m]');
 subplot(3,1,3);
 plot(anal1(:,2), anal1(:,1), 'b-'); axis equal; grid on;
 xlabel('a \delta \lambda [m]'); ylabel('a \delta a [m]');
+
